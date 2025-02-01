@@ -8,7 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 fastapi = "^0.115.7"
-uvicorn = "^0.34.0"
+uvicorn = {extras = ["standard"], version = "^0.34.0"}
 torch = "^2.6.0"
 numpy = "^2.2.2"
 transformers = "^4.48.1"
@@ -16,6 +16,10 @@ transformers = "^4.48.1"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
+
+[tool.poetry.scripts]
+glimpse = "glimpse_llm.core.cli:app"
+test_gpt2 = "tests.test_gpt2:main"
 
 [build-system]
 requires = ["poetry-core"]

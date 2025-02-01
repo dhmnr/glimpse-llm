@@ -44,7 +44,6 @@ class GlimpseServer:
                 if message["type"] == "analyze":
                     # Run analysis
                     results = self.interpreter.analyze_text(message["text"])
-                    
                     # Send results in chunks to avoid message size limits
                     await self.send_analysis_results(websocket, results)
                     

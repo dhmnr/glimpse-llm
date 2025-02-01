@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glimpse LLM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-4">
+        <h1 class="text-3xl font-bold mb-4">Glimpse LLM</h1>
+        
+        <div class="bg-white rounded-lg shadow p-4 mb-4">
+            <textarea 
+                id="input" 
+                class="w-full p-2 border rounded"
+                placeholder="Enter text to analyze..."
+                rows="4"
+            ></textarea>
+            <button 
+                id="analyze" 
+                class="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+                Analyze
+            </button>
+        </div>
+
+        <div id="results" class="grid grid-cols-2 gap-4">
+            <div class="bg-white rounded-lg shadow p-4">
+                <h2 class="text-xl font-bold mb-2">Activations</h2>
+                <div id="activations-result"></div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <h2 class="text-xl font-bold mb-2">Attention</h2>
+                <div id="attention-result"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = new WebSocket(`ws://${window.location.host}/ws`);
+        
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'analysis_activations') {
+                document.getElementById('activations-result').textContent = 
+                    JSON.stringify(data.data, null, 2);
+            }
+            else if (data.type === 'analysis_attention') {
+                document.getElementById('attention-result').textContent = 
+                    JSON.stringify(data.data, null, 2);
+            }
+        };
+
+        document.getElementById('analyze').onclick = function() {
+            const text = document.getElementById('input').value;
+            ws.send(JSON.stringify({
+                type: 'analyze',
+                text: text
+            }));
+        };
+    </script>
+</body>
+</html>

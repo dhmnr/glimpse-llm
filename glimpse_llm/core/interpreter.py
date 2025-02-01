@@ -1,13 +1,17 @@
 # glimpse_llm/core/interpreter.py
+import json
 import torch
 import numpy as np
 from transformers import AutoModel, AutoTokenizer
 from typing import Dict, List, Optional
 import torch.nn.functional as F
 
+from ..config import MODEL_CONFIGS
+
 class GlimpseInterpreter:
     def __init__(self, model_name: str, device: str = "cuda"):
         self.device = device
+        self.model_name = model_name
         self.model = AutoModel.from_pretrained(model_name).to(device)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.activation_cache = {}
@@ -15,49 +19,63 @@ class GlimpseInterpreter:
         self._setup_hooks()
         
     def _setup_hooks(self):
-        def attention_hook(module, input, output):
-            attn_pattern = output[0]  # [batch, heads, seq_len, seq_len]
-            layer_name = f"attention_{len(self.attention_cache)}"
-            self.attention_cache[layer_name] = {
-                "pattern": attn_pattern.detach().cpu(),
-                "heads": attn_pattern.shape[1]
-            }
-            return output
-            
-        def activation_hook(module, input, output):
-            layer_name = f"layer_{len(self.activation_cache)}"
-            self.activation_cache[layer_name] = {
-                "activations": output.detach().cpu(),
-                "neurons": output.shape[-1]
-            }
-            return output
-            
+    
+        model_config = MODEL_CONFIGS[self.model_name]["hooks"]
+        def make_hook(hook_type, config):
+            def hook(module, input, output):
+                if hook_type == "attention":
+                    pattern = output[config["output"]]
+                    self.attention_cache[f"attention_{len(self.attention_cache)}"] = {
+                        "pattern": pattern.detach().cpu(),
+                        "heads": pattern.shape[1]
+                    }
+                elif hook_type == "activations":
+                    self.activation_cache[f"layer_{len(self.activation_cache)}"] = {
+                        "activations": output.detach().cpu(),
+                        "neurons": output.shape[-1]
+                    }
+                return output
+            return hook
+
         for name, module in self.model.named_modules():
-            if "attention" in name:
-                module.register_forward_hook(attention_hook)
-            if "output" in name:
-                module.register_forward_hook(activation_hook)
+            for hook_type, config in model_config.items():
+                if config["module"] in str(type(module).__name__):
+                    if "target" in config:
+                        # Hook specific attribute (like activation function)
+                        target = getattr(module, config["target"])
+                        target.register_forward_hook(make_hook(hook_type, config))
+                    else:
+                        # Hook entire module
+                        module.register_forward_hook(make_hook(hook_type, config))
 
     def analyze_text(self, text: str) -> Dict:
         """Main analysis method"""
         self.activation_cache = {}
         self.attention_cache = {}
         
+        text = text.strip()
+
         inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
         with torch.no_grad():
-            outputs = self.model(**inputs)
+            outputs = self.model(**inputs, output_attentions=True)
         
         tokens = self.tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
-        
+        clean_tokens = [self._clean_token(token) for token in tokens]
         analysis = {
             "activations": self._analyze_activations(),
-            "attention": self._analyze_attention(tokens),
+            "attention": self._analyze_attention(clean_tokens),
             "circuits": self._discover_circuits(),
             "features": self._analyze_features(),
-            "tokens": tokens
+            "tokens": clean_tokens
         }
         
         return analysis
+
+    def _clean_token(self, token: str) -> str:
+        """Clean token by removing special characters and handling spaces"""
+        if token.startswith('Ġ'):
+            return ' ' + token[1:]
+        return token
 
     def _analyze_activations(self) -> Dict:
         results = {}
